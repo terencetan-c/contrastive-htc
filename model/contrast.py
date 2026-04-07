@@ -308,7 +308,7 @@ class ContrastModel(BertPreTrainedModel):
                  multi_label=False, lamb=1, threshold=0.01, tau=1):
         super(ContrastModel, self).__init__(config)
         self.num_labels = config.num_labels
-        self.tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+        self.tokenizer = AutoTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
         self.bert = BertModel(config)

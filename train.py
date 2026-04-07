@@ -1,7 +1,8 @@
 from transformers import AutoTokenizer
-from fairseq.data import data_utils
+# from fairseq.data import data_utils
 import torch
 from torch.utils.data import Dataset, DataLoader, Subset
+from datasets import load_from_disk
 from model.optim import ScheduledOptim, Adam
 from tqdm import tqdm
 import argparse
@@ -16,19 +17,41 @@ class BertDataset(Dataset):
     def __init__(self, max_token=512, device='cpu', pad_idx=0, data_path=None):
         self.device = device
         super(BertDataset, self).__init__()
-        self.data = data_utils.load_indexed_dataset(
-            data_path + '/tok', None, 'mmap'
-        )
-        self.labels = data_utils.load_indexed_dataset(
-            data_path + '/Y', None, 'mmap'
-        )
+
+        # Replace fairseq with HuggingFace
+        dataset = load_from_disk(data_path)
+        self.data = dataset['input_ids']
+        self.labels = dataset['labels']
+
         self.max_token = max_token
         self.pad_idx = pad_idx
 
+        # self.data = data_utils.load_indexed_dataset(
+        #     data_path + '/tok', None, 'mmap'
+        # )
+        # self.labels = data_utils.load_indexed_dataset(
+        #     data_path + '/Y', None, 'mmap'
+        # )
+        # self.max_token = max_token
+        # self.pad_idx = pad_idx
+
     def __getitem__(self, item):
-        data = self.data[item][:self.max_token - 2].to(
-            self.device)
-        labels = self.labels[item].to(self.device)
+        
+        # Ensure data is a 1D tensor of Longs
+        data = torch.tensor(self.data[item], dtype=torch.long)[:self.max_token - 2].to(self.device)
+        
+        # CRITICAL CHANGE: 
+        # 1. Convert to Long (to match == 1)
+        # 2. .view(-1) forces it to be a flat 1D vector of class flags [0, 1, 0...]
+        labels = torch.tensor(self.labels[item], dtype=torch.long).view(-1).to(self.device)
+
+        # # Convert to tensors here, since HF returns lists/numpy arrays
+        # data = torch.tensor(self.data[item], dtype=torch.long)[:self.max_token - 2].to(self.device)
+        # labels = torch.tensor(self.labels[item], dtype=torch.long).to(self.device)
+
+        # data = self.data[item][:self.max_token - 2].to(
+        #     self.device)
+        # labels = self.labels[item].to(self.device)
         return {'data': data, 'label': labels, 'idx': item, }
 
     def __len__(self):
@@ -63,7 +86,7 @@ class Saver:
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--lr', type=float, default=3e-5, help='Learning rate.')
-parser.add_argument('--data', type=str, default='WebOfScience', choices=['WebOfScience', 'nyt', 'rcv1'], help='Dataset.')
+parser.add_argument('--data', type=str, default='panet', choices=['WebOfScience', 'nyt', 'rcv1','panet'], help='Dataset.')
 parser.add_argument('--batch', type=int, default=12, help='Batch size.')
 parser.add_argument('--early-stop', type=int, default=6, help='Epoch before early stop.')
 parser.add_argument('--device', type=str, default='cuda')
@@ -99,14 +122,14 @@ if __name__ == '__main__':
         wandb.init(config=args, project='htc')
     utils.seed_torch(args.seed)
     args.name = args.data + '-' + args.name
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+    tokenizer = AutoTokenizer.from_pretrained("allenai/scibert_scivocab_uncased")
     data_path = os.path.join('data', args.data)
     label_dict = torch.load(os.path.join(data_path, 'bert_value_dict.pt'))
     label_dict = {i: tokenizer.decode(v, skip_special_tokens=True) for i, v in label_dict.items()}
     num_class = len(label_dict)
 
     dataset = BertDataset(device=device, pad_idx=tokenizer.pad_token_id, data_path=data_path)
-    model = ContrastModel.from_pretrained('bert-base-uncased', num_labels=num_class,
+    model = ContrastModel.from_pretrained('allenai/scibert_scivocab_uncased', num_labels=num_class,
                                           contrast_loss=args.contrast, graph=args.graph,
                                           layer=args.layer, data_path=data_path, multi_label=args.multi,
                                           lamb=args.lamb, threshold=args.thre, tau=args.tau)
@@ -170,6 +193,15 @@ if __name__ == '__main__':
             for data, label, idx in pbar:
                 padding_mask = data != tokenizer.pad_token_id
                 output = model(data, padding_mask, labels=label, return_dict=True, )
+                
+                # for l in label:
+                #     # This finds the index of every element greater than 0.5
+                #     # Works for both FloatTensors (0.0/1.0) and LongTensors (0/1)
+                #     active_indices = torch.where(l > 0.5)[0]
+    
+                # # Move to CPU and convert to a list of integers for the evaluator
+                # truth.append(active_indices.cpu().tolist())
+
                 for l in label:
                     t = []
                     for i in range(l.size(0)):

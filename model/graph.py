@@ -252,7 +252,7 @@ class GraphEncoder(nn.Module):
         self.config = config
         self.tau = tau
         self.label_dict = torch.load(os.path.join(data_path, 'bert_value_dict.pt'))
-        self.tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+        self.tokenizer = AutoTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
 
         self.label_dict = {i: self.tokenizer.decode(v) for i, v in self.label_dict.items()}
         self.label_name = []

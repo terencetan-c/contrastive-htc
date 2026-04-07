@@ -27,14 +27,14 @@ if __name__ == '__main__':
     if not hasattr(args, 'graph'):
         args.graph = False
     print(args)
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+    tokenizer = AutoTokenizer.from_pretrained("allenai/scibert_scivocab_uncased")
 
     label_dict = torch.load(os.path.join(data_path, 'bert_value_dict.pt'))
     label_dict = {i: tokenizer.decode(v, skip_special_tokens=True) for i, v in label_dict.items()}
     num_class = len(label_dict)
 
     dataset = BertDataset(device=device, pad_idx=tokenizer.pad_token_id, data_path=data_path)
-    model = ContrastModel.from_pretrained('bert-base-uncased', num_labels=num_class,
+    model = ContrastModel.from_pretrained('allenai/scibert_scivocab_uncased', num_labels=num_class,
                                           contrast_loss=args.contrast, graph=args.graph,
                                           layer=args.layer, data_path=data_path, multi_label=args.multi,
                                           lamb=args.lamb, threshold=args.thre)
@@ -58,9 +58,10 @@ if __name__ == '__main__':
             padding_mask = data != tokenizer.pad_token_id
             output = model(data, padding_mask, return_dict=True, )
             for l in label:
+                l = l.flatten() # Ensures l is definitely 1D [0,1,0,...]
                 t = []
                 for i in range(l.size(0)):
-                    if l[i].item() == 1:
+                    if l[i].item() >  0.5: # Flat-safe, Boolean-safe, and Integ$
                         t.append(i)
                 truth.append(t)
             for l in output['logits']:

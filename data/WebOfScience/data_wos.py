@@ -71,3 +71,4 @@ if __name__ == '__main__':
     val = list(val)
     test = list(test)
     torch.save({'train': train, 'val': val, 'test': test}, 'split.pt')
+    
